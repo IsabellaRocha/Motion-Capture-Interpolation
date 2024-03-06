@@ -152,7 +152,7 @@ vector calculateControlHelperEuler(vector q1, vector q2, vector q3, bool midpoin
 void Interpolator::BezierInterpolationEuler(Motion* pInputMotion, Motion* pOutputMotion, int N)
 {
     int inputLength = pInputMotion->GetNumFrames(); // frames are indexed 0, ..., inputLength-1
-    
+
     // Pre-doing division for later
     double thirdTimeStep = (1.0 / 3.0);
 
@@ -174,20 +174,49 @@ void Interpolator::BezierInterpolationEuler(Motion* pInputMotion, Motion* pOutpu
             Posture interpolatedPosture;
             double t = 1.0 * frame / (N + 1);
 
-            // interpolate root position
-            interpolatedPosture.root_pos = startPosture->root_pos * (1 - t) + endPosture->root_pos * t;
+            // interpolate root position w/ Bezier
+            vector q1 = startPosture->root_pos;
+            vector q2 = endPosture->root_pos;
+            vector a;
+            vector b;
+
+            // Find control point a
+                // Special case if this is a1 = Slerp(q1, Slerp(q3, q2, 2.0), (1.0 / 3)
+            if (startKeyframe == 0) {
+                Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
+                vector q3 = postureNplus1->root_pos;
+                a = calculateControlHelperEuler(q3, q2, q1, false, thirdTimeStep);
+            }
+            else {
+                Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
+                vector qnminus1 = postureNminus1->root_pos;
+                a = calculateControlHelperEuler(qnminus1, q1, q2, true, thirdTimeStep);
+            }
+
+            // Find control point b
+            // Special case if this is bn = Slerp(qn, Slerp(qn-2, qn-1, 2.0), (1.0 / 3)
+            if (endKeyframe + N + 1 > inputLength) {
+                Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
+                vector qnminus1 = postureNminus1->root_pos;
+                b = calculateControlHelperEuler(qnminus1, q1, q2, false, thirdTimeStep);
+            }
+            else {
+                Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
+                vector qnplus1 = postureNplus1->root_pos;
+                b = calculateControlHelperEuler(q1, q2, qnplus1, true, -thirdTimeStep);
+            }
+
+            interpolatedPosture.root_pos = DeCasteljauEuler(t, q1, a, b, q2);
 
             // interpolate bone rotations
             for (int bone = 0; bone < MAX_BONES_IN_ASF_FILE; bone++) {
-                vector q1 = startPosture->bone_rotation[bone];
-                vector q2 = endPosture->bone_rotation[bone];
-                vector a;
-                vector b;
+                q1 = startPosture->bone_rotation[bone];
+                q2 = endPosture->bone_rotation[bone];
 
                 // Find control point a
                 // Special case if this is a1 = Slerp(q1, Slerp(q3, q2, 2.0), (1.0 / 3)
                 if (startKeyframe == 0) {
-                    Posture* postureNplus1 = pInputMotion->GetPosture(2);
+                    Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
                     vector q3 = postureNplus1->bone_rotation[bone];
                     a = calculateControlHelperEuler(q3, q2, q1, false, thirdTimeStep);
                 }
@@ -254,9 +283,11 @@ void Interpolator::LinearInterpolationQuaternion(Motion* pInputMotion, Motion* p
                 Quaternion<double> endQuaternion;
 
                 // Get quaternions from euler
-                double startEuler[3] = { startPosture->bone_rotation[bone].x(), startPosture->bone_rotation[bone].y(), startPosture->bone_rotation[bone].z() };
+                vector startBoneRotationEuler = startPosture->bone_rotation[bone];
+                double startEuler[3] = { startBoneRotationEuler.x(), startBoneRotationEuler.y(), startBoneRotationEuler.z() };
                 Euler2Quaternion(startEuler, startQuaternion);
-                double endEuler[3] = { endPosture->bone_rotation[bone].x(), endPosture->bone_rotation[bone].y(), endPosture->bone_rotation[bone].z() };
+                vector endBoneRotationEuler = endPosture->bone_rotation[bone];
+                double endEuler[3] = { endBoneRotationEuler.x(), endBoneRotationEuler.y(), endBoneRotationEuler.z() };
                 Euler2Quaternion(endEuler, endQuaternion);
                 Quaternion<double> interpolatedQuaternion = Slerp(t, startQuaternion, endQuaternion);
 
@@ -310,8 +341,39 @@ void Interpolator::BezierInterpolationQuaternion(Motion* pInputMotion, Motion* p
             Posture interpolatedPosture;
             double t = 1.0 * frame / (N + 1);
 
-            // interpolate root position
-            interpolatedPosture.root_pos = startPosture->root_pos * (1 - t) + endPosture->root_pos * t;
+            // interpolate root position w/ Bezier
+            vector q1 = startPosture->root_pos;
+            vector q2 = endPosture->root_pos;
+            vector a;
+            vector b;
+
+            // Find control point a
+                // Special case if this is a1 = Slerp(q1, Slerp(q3, q2, 2.0), (1.0 / 3)
+            if (startKeyframe == 0) {
+                Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
+                vector q3 = postureNplus1->root_pos;
+                a = calculateControlHelperEuler(q3, q2, q1, false, thirdTimeStep);
+            }
+            else {
+                Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
+                vector qnminus1 = postureNminus1->root_pos;
+                a = calculateControlHelperEuler(qnminus1, q1, q2, true, thirdTimeStep);
+            }
+
+            // Find control point b
+            // Special case if this is bn = Slerp(qn, Slerp(qn-2, qn-1, 2.0), (1.0 / 3)
+            if (endKeyframe + N + 1 > inputLength) {
+                Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
+                vector qnminus1 = postureNminus1->root_pos;
+                b = calculateControlHelperEuler(qnminus1, q1, q2, false, thirdTimeStep);
+            }
+            else {
+                Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
+                vector qnplus1 = postureNplus1->root_pos;
+                b = calculateControlHelperEuler(q1, q2, qnplus1, true, -thirdTimeStep);
+            }
+
+            interpolatedPosture.root_pos = DeCasteljauEuler(t, q1, a, b, q2);
 
             // interpolate bone rotations
             for (int bone = 0; bone < MAX_BONES_IN_ASF_FILE; bone++) {
@@ -321,23 +383,27 @@ void Interpolator::BezierInterpolationQuaternion(Motion* pInputMotion, Motion* p
                 Quaternion<double> b;
 
                 // Get quaternions from euler
-                double q1Euler[3] = { startPosture->bone_rotation[bone].x(), startPosture->bone_rotation[bone].y(), startPosture->bone_rotation[bone].z() };
+                vector q1BoneRotationEuler = startPosture->bone_rotation[bone];
+                double q1Euler[3] = { q1BoneRotationEuler.x(), q1BoneRotationEuler.y(), q1BoneRotationEuler.z() };
                 Euler2Quaternion(q1Euler, q1);
-                double q2Euler[3] = { endPosture->bone_rotation[bone].x(), endPosture->bone_rotation[bone].y(), endPosture->bone_rotation[bone].z() };
+                vector q2BoneRotationEuler = endPosture->bone_rotation[bone];
+                double q2Euler[3] = { q2BoneRotationEuler.x(), q2BoneRotationEuler.y(), q2BoneRotationEuler.z() };
                 Euler2Quaternion(q2Euler, q2);
                 // Slerp between start and end rotation quaternion
                 // Find control point a
                 // Special case if this is a1 = Slerp(q1, Slerp(q3, q2, 2.0), (1.0 / 3)
                 if (startKeyframe == 0) {
-                    Posture* postureNplus1 = pInputMotion->GetPosture(2);
-                    double q3Euler[3] = { postureNplus1->bone_rotation[bone].x(), postureNplus1->bone_rotation[bone].y(), postureNplus1->bone_rotation[bone].z() };
+                    Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
+                    vector q3BoneRotationEuler = postureNplus1->bone_rotation[bone];
+                    double q3Euler[3] = { q3BoneRotationEuler.x(), q3BoneRotationEuler.y(), q3BoneRotationEuler.z() };
                     Quaternion<double> q3;
                     Euler2Quaternion(q3Euler, q3);
                     a = calculateControlHelperQuaternion(q3, q2, q1, false, thirdTimeStep);
                 }
                 else {
                     Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
-                    double eulerNminus1[3] = { postureNminus1->bone_rotation[bone].x(), postureNminus1->bone_rotation[bone].y(), postureNminus1->bone_rotation[bone].z() };
+                    vector qnminus1BoneRotationEuler = postureNminus1->bone_rotation[bone];
+                    double eulerNminus1[3] = { qnminus1BoneRotationEuler.x(), qnminus1BoneRotationEuler.y(), qnminus1BoneRotationEuler.z() };
                     Quaternion<double> qnminus1;
                     Euler2Quaternion(eulerNminus1, qnminus1);
                     a = calculateControlHelperQuaternion(qnminus1, q1, q2, true, thirdTimeStep);
@@ -347,14 +413,16 @@ void Interpolator::BezierInterpolationQuaternion(Motion* pInputMotion, Motion* p
                 // Special case if this is bn = Slerp(qn, Slerp(qn-2, qn-1, 2.0), (1.0 / 3)
                 if (endKeyframe + N + 1 > inputLength) {
                     Posture* postureNminus1 = pInputMotion->GetPosture(startKeyframe - N - 1);
-                    double eulerNminus1[3] = { postureNminus1->bone_rotation[bone].x(), postureNminus1->bone_rotation[bone].y(), postureNminus1->bone_rotation[bone].z() };
+                    vector qnminus1BoneRotationEuler = postureNminus1->bone_rotation[bone];
+                    double eulerNminus1[3] = { qnminus1BoneRotationEuler.x(), qnminus1BoneRotationEuler.y(), qnminus1BoneRotationEuler.z() };
                     Quaternion<double> qnminus1;
                     Euler2Quaternion(eulerNminus1, qnminus1);
                     b = calculateControlHelperQuaternion(qnminus1, q1, q2, false, thirdTimeStep);
                 }
                 else {
                     Posture* postureNplus1 = pInputMotion->GetPosture(endKeyframe + N + 1);
-                    double eulerNplus1[3] = { postureNplus1->bone_rotation[bone].x(), postureNplus1->bone_rotation[bone].y(), postureNplus1->bone_rotation[bone].z() };
+                    vector qnplus1BoneRotationEuler = postureNplus1->bone_rotation[bone];
+                    double eulerNplus1[3] = { qnplus1BoneRotationEuler.x(), qnplus1BoneRotationEuler.y(), qnplus1BoneRotationEuler.z() };
                     Quaternion<double> qnplus1;
                     Euler2Quaternion(eulerNplus1, qnplus1);
                     b = calculateControlHelperQuaternion(q1, q2, qnplus1, true, -thirdTimeStep);
@@ -398,7 +466,7 @@ Quaternion<double> Interpolator::Slerp(double t, Quaternion<double>& qStart, Qua
 {
     Quaternion<double> result;
     double qStartDotqEnd = qStart.Gets() * qEnd_.Gets() + qStart.Getx() * qEnd_.Getx() + qStart.Gety() * qEnd_.Gety() + qStart.Getz() * qEnd_.Getz();
-    
+
     // Quaternions are more than halfway around unit quaternion sphere, negate to go the opposite direction which is shorter
     // q = -q so we know we can do this
     if (qStartDotqEnd < 0.0) {
