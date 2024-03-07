@@ -4,6 +4,9 @@
 ### **Background**
 This assignment was written on a Windows device using Visual Studio 2019. To change the command line input, the debugger under properties was used and then to run the Local Windows Debugger was used.
 
+Sample command line arguments for interpolator.cpp:
+../../../mocapPlayer-starter/131-dance.asf ../../../mocapPlayer-starter/131_04-dance.amc b q 20 ../../../mocapPlayer-starter/131_04-dance-bq2-N20.amc
+
 ### **Basic Features**
 * Able to convert from euler angles to quaternions and back
 * Implemented SLERP to interpolate along the unit quaternion sphere
